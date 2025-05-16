@@ -1,0 +1,226 @@
+#define _XTAL_FREQ 8000000
+
+#include <xc.h>
+#include <stdio.h> 
+#include<math.h>
+
+#pragma config FOSC=HS,WDTE=OFF,PWRTE=OFF,MCLRE=ON,CP=OFF,CPD=OFF,BOREN=OFF,CLKOUTEN=OFF
+#pragma config IESO=OFF,FCMEN=OFF,WRT=OFF,VCAPEN=OFF,PLLEN=OFF,STVREN=OFF,LVP=OFF
+
+#define RS RD2
+#define EN RD3
+#define D4 RD4
+#define D5 RD5
+#define D6 RD6
+#define D7 RD7
+
+void Lcd_SetBit(char data_bit) //Based on the Hex value Set the Bits of the Data Lines
+{
+    if (data_bit & 1)
+        D4 = 1;
+    else
+        D4 = 0;
+
+    if (data_bit & 2)
+        D5 = 1;
+    else
+        D5 = 0;
+
+    if (data_bit & 4)
+        D6 = 1;
+    else
+        D6 = 0;
+
+    if (data_bit & 8)
+        D7 = 1;
+    else
+        D7 = 0;
+}
+
+void Lcd_Cmd(char a) {
+    RS = 0;
+    Lcd_SetBit(a); //Incoming Hex value
+    EN = 1;
+    __delay_ms(4);
+    EN = 0;
+}
+
+Lcd_Clear() {
+    Lcd_Cmd(0); //Clear the LCD
+    Lcd_Cmd(1); //Move the cursor to first position
+}
+
+void Lcd_Set_Cursor(char a, char b) {
+    char temp, z, y;
+    if (a == 1) {
+        temp = 0x80 + b - 1; //80H is used to move the curser
+        z = temp >> 4; //Lower 8-bits
+        y = temp & 0x0F; //Upper 8-bits
+        Lcd_Cmd(z); //Set Row
+        Lcd_Cmd(y); //Set Column
+    } else if (a == 2) {
+        temp = 0xC0 + b - 1;
+        z = temp >> 4; //Lower 8-bits
+        y = temp & 0x0F; //Upper 8-bits
+        Lcd_Cmd(z); //Set Row
+        Lcd_Cmd(y); //Set Column
+    }
+}
+
+void Lcd_Start() {
+    Lcd_SetBit(0x00);
+    for (int i = 1065244; i <= 0; i--) NOP();
+    Lcd_Cmd(0x03);
+    __delay_ms(5);
+    Lcd_Cmd(0x03);
+    __delay_ms(11);
+    Lcd_Cmd(0x03);
+    Lcd_Cmd(0x02); //02H is used for Return home -> Clears the RAM and initializes the LCD
+    Lcd_Cmd(0x02); //02H is used for Return home -> Clears the RAM and initializes the LCD
+    Lcd_Cmd(0x08); //Select Row 1
+    Lcd_Cmd(0x00); //Clear Row 1 Display
+    Lcd_Cmd(0x0C); //Select Row 2
+    Lcd_Cmd(0x00); //Clear Row 2 Display
+    Lcd_Cmd(0x06);
+}
+
+void Lcd_Print_Char(char data) //Send 8-bits through 4-bit mode
+{
+    char Lower_Nibble, Upper_Nibble;
+    Lower_Nibble = data & 0x0F;
+    Upper_Nibble = data & 0xF0;
+    RS = 1; // => RS = 1
+    Lcd_SetBit(Upper_Nibble >> 4); //Send upper half by shifting by 4
+    EN = 1;
+    for (int i = 2130483; i <= 0; i--) NOP();
+    EN = 0;
+    Lcd_SetBit(Lower_Nibble); //Send Lower half
+    EN = 1;
+    for (int i = 2130483; i <= 0; i--) NOP();
+    EN = 0;
+}
+
+void Lcd_Print_String(char *a) {
+    int i;
+    for (i = 0; a[i] != '\0'; i++)
+        Lcd_Print_Char(a[i]); //Split the string using pointers and call the Char function 
+}
+void printToLCD(int Temp1,int Temp2) {
+    char text[17];
+    Lcd_Clear();
+
+    // First line
+    sprintf(text, "Sensor 1:%3d ", Temp1  );
+    Lcd_Set_Cursor(1, 1);
+    Lcd_Print_String(text);
+
+    // Second line
+    sprintf(text, "Sensor 2:%3d", Temp2);
+    Lcd_Set_Cursor(2, 1);
+    Lcd_Print_String(text);
+    
+    __delay_ms(2000);
+}
+
+void initTimer() {
+    TMR0CS = 0;
+    TMR0SE = 0;
+    PSA = 0;
+    PS2 = 1;
+    PS1 = 1;
+    PS0 = 1;
+    // u TMR0 neæe doæi do promjene stanja registra tokom naredna dva instrukcijska ciklusa (TMR0=4) 
+    TMR0 = 6;
+}
+void initLCD() {
+    Lcd_Start();
+}
+
+int main() {
+   
+    int temperatura, temperatura1;
+    int temperaturaAdd=0, temperatura1Add=1;    //adrese 0 i 1  temperature tj 1 i 2 bit
+    
+    // inicijalizacija digitalnih pinova, 
+    // izlazni pinovi se konfigurisu samo oni koji trebaju biti izlaz
+    TRISD = 0x03;
+    ANSELD = 0x00;
+    PORTD = 0;
+    TRISB = 0xE0; 
+    
+    TRISA=0xE3; // Pinovi A0,A1 su ulazni, dok su pinovi A2,A3,A4 izlazni 11100011
+    ANSELA=0x3; // Pinovi A0,A1 su analogni, dok su pinovi A2,A3,A4 digitalni 00000011
+    
+    
+    // lijevo poravnanje
+    ADCON1bits.ADFM=0;
+    // interni RC oscilator za ADC
+    ADCON1bits.ADCS2=1;
+    ADCON1bits.ADCS1=1;
+    ADCON1bits.ADCS0=1;
+    // Vss za Vref-, Vdd za Vref+
+    ADCON1bits.ADNREF=0;
+    ADCON1bits.ADPREF1=0;
+    ADCON1bits.ADPREF0=0;
+    //ukljucivanje ADC
+    ADCON0bits.ADON=1;
+   
+    initLCD();
+    initTimer();
+   
+    int temperaturaMemory = eeprom_read(temperaturaAdd);     //cita se vrijednost na adresi temperature
+    temperatura = temperaturaMemory;                        //u temperatura se upise ocitan broj 
+    
+    int temperatura1Memory = eeprom_read(temperatura1Add);  //cita se vrijednost na adresi temperature1
+    temperatura1 = temperatura1Memory;                      //u temperatura1 se upise ocitan broj
+   
+    int vrijednost=0, vrijednost1=0;
+    float napon, napon1;
+    
+    int pr = 0;
+    while(1) {
+         if (TMR0 == 0) {
+            pr++;
+            if (pr == 155) {
+            	// izbor AN0
+                ADCON0bits.CHS3=0;
+                ADCON0bits.CHS2=0;
+                ADCON0bits.CHS1=0;
+                ADCON0bits.CHS0=0;
+                
+                ADCON0bits.ADGO=1;
+                while(ADCON0bits.ADGO)
+                    vrijednost =  ADRESH;
+                napon= vrijednost*5.0/255;
+                temperatura=napon*100;
+                
+                if(temperatura>30)         LATA=0b00000100;//preko 30 A2
+                else if (temperatura <28 ) LATA=0b00001000;//ispod 28 A3
+                else                       LATA=0b00010000;//u opsegu A4
+                  
+                  // izbor AN1
+                  ADCON0bits.CHS3=0;
+                  ADCON0bits.CHS2=0;
+                  ADCON0bits.CHS1=0;
+                  ADCON0bits.CHS0=1;
+                  
+                  ADCON0bits.ADGO=1;
+                  while(ADCON0bits.ADGO) 
+                      vrijednost1 = ADRESH;
+                  napon1=vrijednost1*5.0/255; 
+                  temperatura1=napon1*100;
+                  
+                  if(temperatura1>26)         LATB=0b00000001;//preko 26 B0
+                  else if (temperatura1 <20 ) LATB=0b00000010;//ispod 20 B1
+                  else                        LATB=0b00000100;//u opsegu B2
+                  
+                  eeprom_write(temperaturaAdd, temperatura);      //upisujemo na memorijsku lokaciju vrijednost temperature
+                  eeprom_write(temperatura1Add, temperatura1);
+                  printToLCD(temperatura,temperatura1); 
+                  pr = 0;
+            }
+            TMR0 = 6;
+         }
+    }
+    return 0;
+}
