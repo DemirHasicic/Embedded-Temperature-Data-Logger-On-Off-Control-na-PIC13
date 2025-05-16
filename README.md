@@ -29,12 +29,9 @@ An embedded solution for temperature monitoring and regulation, built around a P
 
 ## Software Requirements
 
-- **MPLAB X IDE** (or your preferred PIC toolchain)  
+- **MPLAB X IDE**  
 - **XC8 C Compiler** (for PIC13 family)  
 - **Proteus** (for schematic simulation)  
 - **Git** (version control)  
 
 ---
-
-## Repository Structure
-
